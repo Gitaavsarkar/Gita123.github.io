@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube Thumbnail Downloader</title>
+  <style>
+    :root{--maxw:900px;--accent:#0b76ef}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:1rem;padding:1rem;color:#111;background:#f7f9fc}
+    .wrap{max-width:var(--maxw);margin:0 auto;background:#fff;padding:1.25rem;border-radius:12px;box-shadow:0 6px 18px rgba(20,30,50,0.06)}
+    h1{font-size:1.4rem;margin:0 0 .5rem}
+    p.lead{margin:.25rem 0 .9rem;color:#444}
+    label{display:block;margin:.6rem 0 .25rem;font-weight:600}
+    input[type="text"]{width:100%;padding:.65rem;border:1px solid #e3e7ee;border-radius:8px;font-size:0.95rem}
+    button{margin-top:.6rem;padding:.6rem .9rem;background:var(--accent);color:white;border:0;border-radius:8px;font-weight:600;cursor:pointer}
+    .preview{display:grid;grid-template-columns:1fr;gap:1rem;margin-top:1rem}
+    .thumb-row{display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start}
+    .card{background:#fbfdff;border:1px solid #eef3fb;padding:.6rem;border-radius:8px;min-width:180px;max-width:320px}
+    .card img{width:100%;height:auto;border-radius:6px;display:block}
+    .meta{font-size:.85rem;margin-top:.45rem;color:#333}
+    a.download{display:inline-block;margin-top:.5rem;padding:.45rem .6rem;background:#0b76ef;color:#fff;border-radius:6px;text-decoration:none;font-weight:600}
+    footer{margin-top:1.1rem;font-size:.85rem;color:#666}
+    .small{font-size:.85rem;color:#666}
+    @media (min-width:700px){ .preview{grid-template-columns:1fr 320px} .thumb-row{flex-direction:column} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>YouTube Thumbnail Downloader</h1>
+    <p class="lead">YouTube video link paste karo — thumbnails dekho aur download karo. (Multiple sizes supported)</p>
+
+    <label for="url">YouTube Video URL</label>
+    <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID" />
+    <div>
+      <button id="go">Get Thumbnails</button>
+      <button id="clear" style="background:#777;margin-left:.5rem">Clear</button>
+    </div>
+
+    <div id="result" class="preview" style="display:none">
+      <div>
+        <div id="thumbs" class="thumb-row"></div>
+      </div>
+      <div id="info" class="card" style="display:none">
+        <div id="infoContent"></div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="small">Note: Ye tool sirf thumbnails dikhata/allow karta hai. Video download karna YouTube policies ke against ho sakta hai.</div>
+    </footer>
+  </div>
+
+  <script>
+    function extractYouTubeID(url) {
+      if (!url) return null;
+      url = url.trim();
+      if (/^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
+      const patterns = [
+        /(?:youtube\.com\/.*v=|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+        /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
+      ];
+      for (const p of patterns) {
+        const m = url.match(p);
+        if (m && m[1]) return m[1];
+      }
+      const m = url.match(/([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    }
+
+    const sizes = [
+      {key:'default', label:'Default (120x90)'},
+      {key:'mqdefault', label:'Medium (320x180)'},
+      {key:'hqdefault', label:'High (480x360)'},
+      {key:'sddefault', label:'SD (640x480)'},
+      {key:'maxresdefault', label:'Max (various - best)'}
+    ];
+
+    const goBtn = document.getElementById('go');
+    const clearBtn = document.getElementById('clear');
+    const urlInput = document.getElementById('url');
+    const thumbsDiv = document.getElementById('thumbs');
+    const resultDiv = document.getElementById('result');
+    const infoCard = document.getElementById('info');
+    const infoContent = document.getElementById('infoContent');
+
+    function makeThumbURL(id, sizeKey) {
+      return `https://i.ytimg.com/vi/${id}/${sizeKey}.jpg`;
+    }
+
+    async function checkImageExists(url) {
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        return res.ok && res.headers.get('content-type')?.startsWith('image');
+      } catch {
+        return false;
+      }
+    }
+
+    async function showThumbnails(id, originalUrl) {
+      thumbsDiv.innerHTML = '';
+      infoContent.innerHTML = `<strong>Video ID:</strong> ${id}<br><strong>Source URL:</strong> <a href="${originalUrl}" target="_blank" rel="noopener">${originalUrl}</a>`;
+      infoCard.style.display = 'block';
+
+      for (const s of sizes) {
+        const url = makeThumbURL(id, s.key);
+        const exists = await checkImageExists(url);
+        const card = document.createElement('div');
+        card.className = 'card';
+        if (exists) {
+          card.innerHTML = `<div style="font-weight:700">${s.label}</div>
+            <img src="${url}" alt="Thumbnail ${s.key}" loading="lazy" />
+            <div class="meta"><a class="download" href="${url}" download="yt-${id}-${s.key}.jpg">Download</a></div>`;
+        } else {
+          card.innerHTML = `<div style="font-weight:700">${s.label}</div>
+            <div class="meta">Not available for this video</div>
+            <a class="download" href="${url}" target="_blank">Try link</a>`;
+        }
+        thumbsDiv.appendChild(card);
+      }
+    }
+
+    goBtn.addEventListener('click', async () => {
+      const url = urlInput.value;
+      const id = extractYouTubeID(url);
+      if (!id) return alert('Krupaya valid YouTube link ya video ID paste karein.');
+      resultDiv.style.display = 'grid';
+      thumbsDiv.innerHTML = '<div class="card">Loading…</div>';
+      await showThumbnails(id, url);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      urlInput.value = '';
+      thumbsDiv.innerHTML = '';
+      resultDiv.style.display = 'none';
+      infoCard.style.display = 'none';
+    });
+
+    urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') goBtn.click(); });
+  </script>
+</body>
+</html>
